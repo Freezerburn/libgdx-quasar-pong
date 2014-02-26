@@ -46,12 +46,12 @@ public class Paddle extends BasicActor<Event, Void> {
         while(going) {
             System.out.println(this.getQueueLength());
             final Event e = receive();
+            long time = System.nanoTime();
+            System.out.println("Time since last event: " + (time - lastTick) / 1000000.0f);
+            lastTick = time;
             System.out.println(e.type);
             switch (e.type) {
                 case TICK:
-                    long time = System.nanoTime();
-                    System.out.println("Time since last tick: " + (time - lastTick) / 1000000.0f);
-                    lastTick = time;
                     final Event.TickEvent tick = (Event.TickEvent) e;
                     tick(tick.getS());
                     break;
