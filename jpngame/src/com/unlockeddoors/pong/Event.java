@@ -3,8 +3,8 @@ package com.unlockeddoors.pong;
 import co.paralleluniverse.actors.ActorRef;
 import co.paralleluniverse.actors.behaviors.RequestMessage;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.Pool;
 
 /**
  * Created with IntelliJ IDEA.
@@ -49,9 +49,9 @@ public class Event extends RequestMessage<Object> {
 
     public static class CollisionsEvent extends Event {
         public final Array<ActorRef<Event>> between;
-        public final Array<Rectangle> deltas;
+        public final Array<Vector2> deltas;
 
-        public CollisionsEvent(Array<ActorRef<Event>> between, Array<Rectangle> deltas) {
+        public CollisionsEvent(Array<ActorRef<Event>> between, Array<Vector2> deltas) {
             super(Type.COLLISIONS);
             this.between = between;
             this.deltas = deltas;

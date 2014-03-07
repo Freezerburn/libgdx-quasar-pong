@@ -6,6 +6,7 @@ import co.paralleluniverse.fibers.Fiber;
 import co.paralleluniverse.fibers.FiberForkJoinScheduler;
 import co.paralleluniverse.strands.SuspendableRunnable;
 import co.paralleluniverse.strands.channels.Channels;
+import co.paralleluniverse.strands.concurrent.Phaser;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -17,6 +18,8 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.Pool;
@@ -52,8 +55,8 @@ public class Pong implements ApplicationListener, InputProcessor {
 
     public static Array<ActorRef<Event>> actors = new Array<>(10);
     public static final FiberForkJoinScheduler scheduler = new FiberForkJoinScheduler("Background Fibers", 4);
-
-    public static long lastInput = 0;
+    public static final Phaser collisionPhaser = new Phaser();
+    public static final Phaser collisionEndPhaser = new Phaser();
 
     Event.TickEvent tickEvent = new Event.TickEvent(16.0f / 1000.0f);
 
@@ -120,9 +123,23 @@ public class Pong implements ApplicationListener, InputProcessor {
             batch = new SpriteBatch();
             shapeRenderer = new ShapeRenderer();
 
-            actors.add(new Paddle(new Rectangle(300, 40, 100, 20)).spawn(scheduler));
-            actors.add(new Wall(new Rectangle(10, 0, 30, h)).spawn(scheduler));
+            final float wallWidth = 15;
+            final float wallBufferToEdge = 30;
+
+            final float paddleBufferToEdge = 20;
+            final float paddleWidth = 100;
+            final float paddleHeight = 20;
+            final float paddleX = w / 2.0f - paddleWidth / 2.0f;
+            final float paddleY = paddleHeight + paddleBufferToEdge;
+
+            actors.add(new Paddle(new Rectangle(paddleX, paddleY, paddleWidth, paddleHeight)).spawn(scheduler));
+            actors.add(new Wall(new Rectangle(wallBufferToEdge, 0, wallWidth, h)).spawn(scheduler));
+            actors.add(new Wall(new Rectangle(w - wallBufferToEdge - wallWidth, 0, wallWidth, h)).spawn(scheduler));
+            actors.add(new Ball(new Rectangle(w / 2.0f, h / 2.0f, 40, 40), new Vector2(100, 100)).spawn(scheduler));
+            actors.add(new Enemy(new Rectangle(paddleX, h - paddleBufferToEdge, paddleWidth, paddleHeight)).spawn(scheduler));
             actors.add(new CollisionFinder().spawn(scheduler));
+
+            collisionEndPhaser.register();
         }
         catch (GdxRuntimeException e) {
             e.getCause().printStackTrace();
@@ -147,58 +164,38 @@ public class Pong implements ApplicationListener, InputProcessor {
 
             for(int i = 0; i < actors.size; i++) {
                 ActorRef<Event> ref = actors.get(i);
-                new Fiber(scheduler, (SuspendableRunnable) () -> {
-                    ref.send(tickEvent);
-                }).start();
+                new Fiber(scheduler, () -> ref.send(tickEvent)).start();
             }
-//            actors.forEach((a) -> {
-//                try {
-//                    a.send(tickEvent);
-//                } catch (SuspendExecution suspendExecution) {
-//                    suspendExecution.printStackTrace();
-//                }
-//            });
+            collisionEndPhaser.arriveAndAwaitAdvance();
 
             postedShapeRunnables.sort((one, two) -> one.type.compareTo(two.type));
             shapeRenderer.setProjectionMatrix(camera.combined);
 
+            // Draw filled shapes.
             Iterable<ShapeRunnableContainer> itFilled = postedShapeRunnables.select(
-                    (container) -> {
-                        if(null != container) {
-                            return container.type.equals(ShapeRenderer.ShapeType.Filled);
-                        }
-                        return false;
-                    }
+                    (container) -> null != container && container.type.equals(ShapeRenderer.ShapeType.Filled)
             );
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            shapeRenderer.rect(100, 400, 40, 40, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE);
             itFilled.forEach((container) -> container.r.run());
             shapeRenderer.end();
 
+            // Draw line shapes.
             Iterable<ShapeRunnableContainer> itLine = postedShapeRunnables.select(
-                    (container) -> {
-                        if(null != container) {
-                            return container.type.equals(ShapeRenderer.ShapeType.Line);
-                        }
-                        return false;
-                    }
+                    (container) -> null != container && container.type.equals(ShapeRenderer.ShapeType.Line)
             );
             shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
             itLine.forEach((container) -> container.r.run());
             shapeRenderer.end();
 
+            // Draw point shapes.
             Iterable<ShapeRunnableContainer> itPoint = postedShapeRunnables.select(
-                    (container) -> {
-                        if(null != container) {
-                            return container.type.equals(ShapeRenderer.ShapeType.Point);
-                        }
-                        return false;
-                    }
+                    (container) -> null != container && container.type.equals(ShapeRenderer.ShapeType.Point)
             );
             shapeRenderer.begin(ShapeRenderer.ShapeType.Point);
             itPoint.forEach((container) -> container.r.run());
             shapeRenderer.end();
 
+            // Draw sprites.
             batch.setProjectionMatrix(camera.combined);
             batch.begin();
             postedSpriteRunnables.forEach(Runnable::run);
@@ -231,7 +228,6 @@ public class Pong implements ApplicationListener, InputProcessor {
                 Gdx.app.exit();
             }
             else {
-                lastInput = System.nanoTime();
                 new Fiber(scheduler, () -> {
                     final Event e = new Event.InputEvent(keycode, true);
                     for(int i = 0; i < actors.size; i++) {

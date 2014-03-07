@@ -4,7 +4,6 @@ import co.paralleluniverse.actors.ActorRef;
 import co.paralleluniverse.actors.BasicActor;
 import co.paralleluniverse.actors.behaviors.RequestReplyHelper;
 import co.paralleluniverse.fibers.SuspendExecution;
-import co.paralleluniverse.strands.channels.DelayedVal;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -23,17 +22,17 @@ public class Paddle extends BasicActor<Event, Void> {
 
     boolean going = true;
     Rectangle rect;
-    Val<Rectangle> collisionRect;
     Runnable render;
     Vector2 velocity;
     Pong.ShapeRunnableRemover remover;
-    long lastTick;
 
     public Paddle(Rectangle rect) {
         super("Paddle", Pong.MAILBOX_CONFIG);
+
+        Pong.collisionPhaser.register();
+
         this.rect = rect;
         this.velocity = new Vector2();
-        this.collisionRect = new Val<Rectangle>();
 
         render = () -> {
             Pong.shapeRenderer.rect(rect.x, rect.y, rect.width, rect.height, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE);
@@ -44,27 +43,31 @@ public class Paddle extends BasicActor<Event, Void> {
     @Override
     protected Void doRun() throws InterruptedException, SuspendExecution {
         while(going) {
-            System.out.println(this.getQueueLength());
             final Event e = receive();
-            long time = System.nanoTime();
-            System.out.println("Time since last event: " + (time - lastTick) / 1000000.0f);
-            lastTick = time;
-            System.out.println(e.type);
             switch (e.type) {
                 case TICK:
                     final Event.TickEvent tick = (Event.TickEvent) e;
                     tick(tick.getS());
+                    Pong.collisionPhaser.arrive();
                     break;
                 case INPUT:
                     final Event.InputEvent input = (Event.InputEvent) e;
                     handleInput(input.keycode, input.pushed);
                     break;
                 case REQUEST_RECT:
-                    RequestReplyHelper.reply(e, collisionRect);
+                    RequestReplyHelper.reply(e, rect);
+                    break;
+                case REQUEST_NAME:
+                    RequestReplyHelper.reply(e, "Paddle");
                     break;
                 case COLLISIONS:
+                    System.out.println("Found collision event.");
                     final Event.CollisionsEvent collisionsEvent = (Event.CollisionsEvent) e;
+                    System.out.println("Handling collision.");
                     handleCollisions(collisionsEvent.between, collisionsEvent.deltas);
+                    System.out.println("Arriving and deregistering.");
+                    Pong.collisionEndPhaser.arriveAndDeregister();
+                    System.out.println("Breaking.");
                     break;
                 case KILL:
                     going = false;
@@ -77,31 +80,33 @@ public class Paddle extends BasicActor<Event, Void> {
         return null;
     }
 
-    private void tick(float s) {
+    void tick(float s) throws SuspendExecution, InterruptedException {
         try {
             rect.x += velocity.x * s;
-            collisionRect.set(new Rectangle(rect));
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private void handleCollisions(Array<ActorRef<Event>> colliders, Array<Rectangle> deltas)
+    void handleCollisions(Array<ActorRef<Event>> colliders, Array<Vector2> deltas)
             throws SuspendExecution, InterruptedException {
-        System.out.println(colliders);
-        System.out.println(deltas);
+//        System.out.println(colliders);
+//        System.out.println(deltas);
         for(int i = 0; i < colliders.size; i++) {
+            System.out.println("Getting actor ref " + i);
             ActorRef<Event> ref = colliders.get(i);
+            System.out.println("Requesting name for actor ref " + ref);
             Object name = RequestReplyHelper.call(ref, new Event(Event.Type.REQUEST_NAME));
+            System.out.println("Got name: " + name);
             if(name.equals("Wall")) {
-                Rectangle delta = deltas.get(i);
-                rect.x += delta.width;
-                collisionRect.set(new Rectangle(rect));
+                System.out.println("Wall, so offsetting.");
+                Vector2 delta = deltas.get(i);
+                rect.x += delta.x;
             }
         }
     }
 
-    private void handleInput(int keycode, boolean pushed) {
+    void handleInput(int keycode, boolean pushed) {
         if(keycode == Input.Keys.LEFT) {
             velocity.x += pushed ? -SPEED : SPEED;
         }

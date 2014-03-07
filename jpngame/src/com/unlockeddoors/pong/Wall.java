@@ -19,13 +19,11 @@ public class Wall extends BasicActor<Event, Void> {
     boolean going = true;
     Rectangle rect;
     Pong.ShapeRunnableRemover remover;
-    Val<Rectangle> val = new Val<>();
 
     public Wall(Rectangle rect) {
         super("Wall" + ID++, Pong.MAILBOX_CONFIG);
 
         this.rect = rect;
-        val.set(rect);
         remover = Pong.postShapeRunnable(
                 () -> Pong.shapeRenderer.rect(rect.x, rect.y, rect.width, rect.height),
                 ShapeRenderer.ShapeType.Filled
@@ -41,7 +39,10 @@ public class Wall extends BasicActor<Event, Void> {
                     RequestReplyHelper.reply(e, "Wall");
                     break;
                 case REQUEST_RECT:
-                    RequestReplyHelper.reply(e, val);
+                    RequestReplyHelper.reply(e, rect);
+                    break;
+                case COLLISIONS:
+                    Pong.collisionEndPhaser.arriveAndDeregister();
                     break;
                 case KILL:
                     going = false;
