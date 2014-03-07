@@ -18,7 +18,6 @@ public class Event extends RequestMessage<Object> {
         INPUT,
         REQUEST_RECT,
         SEND_RECT,
-        REQUEST_NAME,
         COLLISIONS,
         KILL
     }

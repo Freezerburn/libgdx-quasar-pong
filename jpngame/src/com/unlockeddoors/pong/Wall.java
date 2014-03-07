@@ -35,9 +35,6 @@ public class Wall extends BasicActor<Event, Void> {
         while(going) {
             final Event e = receive();
             switch (e.type) {
-                case REQUEST_NAME:
-                    RequestReplyHelper.reply(e, "Wall");
-                    break;
                 case REQUEST_RECT:
                     RequestReplyHelper.reply(e, rect);
                     break;

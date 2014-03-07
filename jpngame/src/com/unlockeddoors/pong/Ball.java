@@ -50,11 +50,6 @@ public class Ball extends BasicActor<Event, Void> {
                     doCollision(ce.between, ce.deltas);
                     Pong.collisionEndPhaser.arriveAndDeregister();
                     break;
-                case REQUEST_NAME:
-                    System.out.println("Ball responding to name request.");
-                    RequestReplyHelper.reply(e, "Ball");
-                    System.out.println("Done replying.");
-                    break;
                 case REQUEST_RECT:
                     RequestReplyHelper.reply(e, rect);
                     break;
@@ -82,12 +77,12 @@ public class Ball extends BasicActor<Event, Void> {
     void doCollision(Array<ActorRef<Event>> between, Array<Vector2> deltas) throws SuspendExecution, InterruptedException {
         for(int i = 0; i < between.size; i++) {
             final ActorRef<Event> a = between.get(i);
-            final Object name = RequestReplyHelper.call(a, new Event(Event.Type.REQUEST_NAME));
+            String name = a.getName();
             if(name.equals("Paddle")) {
                 velocity.y = -velocity.y;
                 rect.y += deltas.get(i).y;
             }
-            else if(name.equals("Wall")) {
+            else if(name.startsWith("Wall")) {
                 velocity.x = -velocity.x;
             }
         }

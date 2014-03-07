@@ -57,17 +57,10 @@ public class Paddle extends BasicActor<Event, Void> {
                 case REQUEST_RECT:
                     RequestReplyHelper.reply(e, rect);
                     break;
-                case REQUEST_NAME:
-                    RequestReplyHelper.reply(e, "Paddle");
-                    break;
                 case COLLISIONS:
-                    System.out.println("Found collision event.");
                     final Event.CollisionsEvent collisionsEvent = (Event.CollisionsEvent) e;
-                    System.out.println("Handling collision.");
                     handleCollisions(collisionsEvent.between, collisionsEvent.deltas);
-                    System.out.println("Arriving and deregistering.");
                     Pong.collisionEndPhaser.arriveAndDeregister();
-                    System.out.println("Breaking.");
                     break;
                 case KILL:
                     going = false;
@@ -93,13 +86,9 @@ public class Paddle extends BasicActor<Event, Void> {
 //        System.out.println(colliders);
 //        System.out.println(deltas);
         for(int i = 0; i < colliders.size; i++) {
-            System.out.println("Getting actor ref " + i);
             ActorRef<Event> ref = colliders.get(i);
-            System.out.println("Requesting name for actor ref " + ref);
-            Object name = RequestReplyHelper.call(ref, new Event(Event.Type.REQUEST_NAME));
-            System.out.println("Got name: " + name);
-            if(name.equals("Wall")) {
-                System.out.println("Wall, so offsetting.");
+            String name = ref.getName();
+            if(name.startsWith("Wall")) {
                 Vector2 delta = deltas.get(i);
                 rect.x += delta.x;
             }

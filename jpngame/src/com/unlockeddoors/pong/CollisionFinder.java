@@ -76,9 +76,6 @@ public class CollisionFinder extends BasicActor<Event, Void> {
                         }
                         Pong.collisionEndPhaser.arrive();
                         break;
-                    case REQUEST_NAME:
-                        RequestReplyHelper.reply(e, "CollisionFinder");
-                        break;
                     case KILL:
                         going = false;
                         break;
