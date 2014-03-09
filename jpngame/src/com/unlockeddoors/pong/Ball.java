@@ -75,6 +75,7 @@ public class Ball extends BasicActor<Event, Void> {
     }
 
     void doCollision(Array<ActorRef<Event>> between, Array<Vector2> deltas) throws SuspendExecution, InterruptedException {
+        System.out.println("Between ball: " + between);
         for(int i = 0; i < between.size; i++) {
             final ActorRef<Event> a = between.get(i);
             String name = a.getName();
