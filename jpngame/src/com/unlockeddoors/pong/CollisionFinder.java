@@ -58,9 +58,12 @@ public class CollisionFinder extends BasicActor<Event, Void> {
         try {
             while(going) {
                 final Event e = receive();
+//                System.out.println("Collision finder recieved event: " + e.type);
                 switch (e.type) {
                     case TICK:
+//                        System.out.println("Collision: Awaiting advance.");
                         Pong.collisionPhaser.arriveAndAwaitAdvance();
+//                        System.out.println("Collision: Finished awaiting advance.");
 
                         // Reclaim all pooled rectangles and clear out the snapshot.
                         for(int i = 0; i < collisionSnapshot.size; i++) {
@@ -72,11 +75,15 @@ public class CollisionFinder extends BasicActor<Event, Void> {
                         final Event requestRect = new Event(Event.Type.REQUEST_RECT);
                         for(int i = 0; i < Pong.actors.size; i++) {
                             ActorRef<Event> ref = Pong.actors.get(i);
+//                            System.out.println("Collision: Got actor ref: " + ref);
                             // Ignore ourselves.
                             if(ref == ref()) {
+//                                System.out.println("Collision: Ignoring because it's us.");
                                 continue;
                             }
+//                            System.out.println("Collision: Asking for rect.");
                             Rectangle rect = (Rectangle) RequestReplyHelper.call(ref, requestRect);
+//                            System.out.println("Collision: Got rect: " + rect);
                             PooledRect pooled = rectPool.obtain();
                             pooled.init(rect);
                             collisionSnapshot.add(pooled);
@@ -129,6 +136,7 @@ public class CollisionFinder extends BasicActor<Event, Void> {
         } catch (Exception e) {
             e.printStackTrace();
         }
+//        System.out.println("Collision finder done.");
         return null;
     }
 

@@ -17,6 +17,10 @@ import com.badlogic.gdx.utils.Array;
  * To change this template use File | Settings | File Templates.
  */
 public class Ball extends BasicActor<Event, Void> {
+    static final float MAX_PERCENT = 0.6f;
+    static final float ADD_VEL_PER_HIT = 11.0f;
+    public static final float SIZE = 19;
+
     Rectangle rect;
     Vector2 velocity;
     boolean going = true;
@@ -36,9 +40,23 @@ public class Ball extends BasicActor<Event, Void> {
 
     @Override
     protected Void doRun() throws InterruptedException, SuspendExecution {
+        System.out.println("Setting Ball to " + ref() + " in registry.");
         Registry.set("Ball", ref());
+        System.out.println("Ball now looping until killed.");
         while(going) {
-            final Event e = receive();
+            System.out.println("Ball waiting for an event.");
+            Event e;
+            try {
+                e = receive();
+                System.out.println("Ball got an event.");
+            } catch (Exception e1) {
+                System.out.println("Ball: Exception while getting an event.");
+                e = new Event(Event.Type.KILL);
+                System.out.println("Message: " + e1.getMessage());
+                System.out.println("Cause: " + e1.getCause());
+                e1.printStackTrace();
+            }
+            System.out.println("Ball got an event: " + e);
             switch (e.type) {
                 case TICK:
                     Event.TickEvent te = (Event.TickEvent)e;
@@ -75,13 +93,21 @@ public class Ball extends BasicActor<Event, Void> {
     }
 
     void doCollision(Array<ActorRef<Event>> between, Array<Vector2> deltas) throws SuspendExecution, InterruptedException {
-        System.out.println("Between ball: " + between);
+//        System.out.println("Between ball: " + between);
         for(int i = 0; i < between.size; i++) {
             final ActorRef<Event> a = between.get(i);
             String name = a.getName();
             if(name.equals("Paddle")) {
-                velocity.y = -velocity.y;
-                rect.y += deltas.get(i).y;
+                Rectangle rect = (Rectangle) RequestReplyHelper.call(a, new Event(Event.Type.REQUEST_RECT));
+                float offset = this.rect.getCenter(new Vector2()).x - rect.getCenter(new Vector2()).x;
+                float sign = offset < 0 ? -1 : 1;
+                float offsetPercent = Math.min(Math.abs(offset / (rect.width / 2.0f)), MAX_PERCENT) * sign;
+                float totalVelocity = Math.abs(velocity.x) + Math.abs(velocity.y) + ADD_VEL_PER_HIT;
+                velocity.x = totalVelocity * offsetPercent;
+                velocity.y = (velocity.y < 0 ? 1 : -1) * (totalVelocity - Math.abs(velocity.x));
+
+//                velocity.y = -velocity.y;
+                this.rect.y += deltas.get(i).y;
             }
             else if(name.startsWith("Wall")) {
                 velocity.x = -velocity.x;

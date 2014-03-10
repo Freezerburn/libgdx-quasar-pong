@@ -132,11 +132,11 @@ public class Pong implements ApplicationListener, InputProcessor {
             final float paddleX = w / 2.0f - paddleWidth / 2.0f;
             final float paddleY = paddleHeight + paddleBufferToEdge;
 
-            actors.add(new Paddle(new Rectangle(paddleX, paddleY, paddleWidth, paddleHeight)).spawn(scheduler));
+            actors.add(new Paddle(new Rectangle(paddleX, paddleY, Paddle.WIDTH, Paddle.HEIGHT)).spawn(scheduler));
             actors.add(new Wall(new Rectangle(wallBufferToEdge, 0, wallWidth, h)).spawn(scheduler));
             actors.add(new Wall(new Rectangle(w - wallBufferToEdge - wallWidth, 0, wallWidth, h)).spawn(scheduler));
-            actors.add(new Ball(new Rectangle(w / 2.0f, h / 2.0f, 40, 40), new Vector2(100, 100)).spawn(scheduler));
-            actors.add(new Enemy(new Rectangle(paddleX, h - paddleBufferToEdge, paddleWidth, paddleHeight)).spawn(scheduler));
+            actors.add(new Ball(new Rectangle(w / 2.0f, h / 2.0f, Ball.SIZE, Ball.SIZE), new Vector2(100, 100)).spawn(scheduler));
+            actors.add(new Enemy(new Rectangle(paddleX, h - paddleBufferToEdge, Paddle.WIDTH, Paddle.HEIGHT)).spawn(scheduler));
             actors.add(new CollisionFinder().spawn(scheduler));
 
             collisionEndPhaser.register();
@@ -164,9 +164,15 @@ public class Pong implements ApplicationListener, InputProcessor {
 
             for(int i = 0; i < actors.size; i++) {
                 ActorRef<Event> ref = actors.get(i);
-                new Fiber(scheduler, () -> ref.send(tickEvent)).start();
+                new Fiber(scheduler, () -> {
+                    System.out.println("Sending tick event to: " + ref);
+                    ref.send(tickEvent);
+                    System.out.println("Done sending tick event to: " + ref);
+                }).start();
             }
+//            System.out.println("Done tick events.");
             collisionEndPhaser.arriveAndAwaitAdvance();
+//            System.out.println("Done waiting for end of phaser.");
 
             postedShapeRunnables.sort((one, two) -> one.type.compareTo(two.type));
             shapeRenderer.setProjectionMatrix(camera.combined);

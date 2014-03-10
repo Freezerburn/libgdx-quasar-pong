@@ -19,6 +19,8 @@ import com.badlogic.gdx.utils.Array;
  */
 public class Paddle extends BasicActor<Event, Void> {
     public static final float SPEED = 250.0f;
+    public static final float WIDTH = 100;
+    public static final float HEIGHT = 2;
 
     boolean going = true;
     Rectangle rect;
@@ -44,6 +46,7 @@ public class Paddle extends BasicActor<Event, Void> {
     protected Void doRun() throws InterruptedException, SuspendExecution {
         while(going) {
             final Event e = receive();
+//            System.out.println(getName() + " got event: " + e.type);
             switch (e.type) {
                 case TICK:
                     final Event.TickEvent tick = (Event.TickEvent) e;

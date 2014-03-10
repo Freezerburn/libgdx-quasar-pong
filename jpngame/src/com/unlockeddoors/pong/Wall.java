@@ -34,9 +34,12 @@ public class Wall extends BasicActor<Event, Void> {
     protected Void doRun() throws InterruptedException, SuspendExecution {
         while(going) {
             final Event e = receive();
+//            System.out.println("Wall got event: " + e.type);
             switch (e.type) {
                 case REQUEST_RECT:
+//                    System.out.println("Replying with: " + rect);
                     RequestReplyHelper.reply(e, rect);
+//                    System.out.println("Done replying.");
                     break;
                 case COLLISIONS:
                     Pong.collisionEndPhaser.arriveAndDeregister();
