@@ -3,7 +3,9 @@ package com.unlockeddoors.pong;
 import co.paralleluniverse.actors.ActorRef;
 import co.paralleluniverse.actors.BasicActor;
 import co.paralleluniverse.actors.behaviors.RequestReplyHelper;
+import co.paralleluniverse.fibers.Fiber;
 import co.paralleluniverse.fibers.SuspendExecution;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -27,11 +29,12 @@ public class Paddle extends BasicActor<Event, Void> {
     Runnable render;
     Vector2 velocity;
     Pong.ShapeRunnableRemover remover;
+    Fiber tick;
 
     public Paddle(Rectangle rect) {
         super("Paddle", Pong.MAILBOX_CONFIG);
 
-        Pong.collisionPhaser.register();
+//        Pong.collisionSynchPoint.register();
 
         this.rect = rect;
         this.velocity = new Vector2();
@@ -40,37 +43,54 @@ public class Paddle extends BasicActor<Event, Void> {
             Pong.shapeRenderer.rect(rect.x, rect.y, rect.width, rect.height, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE);
         };
         remover = Pong.postShapeRunnable(render, ShapeRenderer.ShapeType.Filled);
+
+        Pong.tickSynchPoint.register();
+        Pong.collisionSynchPoint.register();
+        tick = new Fiber(Pong.scheduler, () -> {
+            while(going) {
+                System.out.println("Paddle arriving and awaiting tick.");
+                Pong.tickSynchPoint.arriveAndAwaitAdvance();
+                if(going) {
+                    tick(Gdx.graphics.getDeltaTime());
+                }
+                System.out.println("Paddle arriving and awaiting collision.");
+                Pong.collisionSynchPoint.arriveAndAwaitAdvance();
+            }
+            Pong.tickSynchPoint.arriveAndDeregister();
+            Pong.collisionSynchPoint.arriveAndDeregister();
+        }).start();
     }
 
     @Override
     protected Void doRun() throws InterruptedException, SuspendExecution {
-        while(going) {
-            final Event e = receive();
-//            System.out.println(getName() + " got event: " + e.type);
-            switch (e.type) {
-                case TICK:
-                    final Event.TickEvent tick = (Event.TickEvent) e;
-                    tick(tick.getS());
-                    Pong.collisionPhaser.arrive();
-                    break;
-                case INPUT:
-                    final Event.InputEvent input = (Event.InputEvent) e;
-                    handleInput(input.keycode, input.pushed);
-                    break;
-                case REQUEST_RECT:
-                    RequestReplyHelper.reply(e, rect);
-                    break;
-                case COLLISIONS:
-                    final Event.CollisionsEvent collisionsEvent = (Event.CollisionsEvent) e;
-                    handleCollisions(collisionsEvent.between, collisionsEvent.deltas);
-                    Pong.collisionEndPhaser.arriveAndDeregister();
-                    break;
-                case KILL:
-                    going = false;
-                    break;
-                default:
-                    System.out.println("Unhandled Event: " + e);
+        try {
+            while(going) {
+                final Event e = receive();
+                switch (e.type) {
+                    case INPUT:
+                        final Event.InputEvent input = (Event.InputEvent) e;
+                        handleInput(input.keycode, input.pushed);
+                        break;
+                    case REQUEST_RECT:
+                        System.out.println(ref() + " got REQUEST_RECT event. Giving back rect: " + rect);
+                        RequestReplyHelper.reply(e, rect);
+                        break;
+                    case COLLISIONS:
+                        final Event.CollisionsEvent collisionsEvent = (Event.CollisionsEvent) e;
+                        System.out.println("Paddle handling collision.");
+                        handleCollisions(collisionsEvent.between, collisionsEvent.deltas);
+                        System.out.println("Paddle arriving and deregistering render.");
+                        Pong.renderSynchPoint.arriveAndDeregister();
+                        break;
+                    case KILL:
+                        going = false;
+                        break;
+                    default:
+                        System.out.println("Unhandled Event: " + e);
+                }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         remover.remove();
         return null;
@@ -86,8 +106,6 @@ public class Paddle extends BasicActor<Event, Void> {
 
     void handleCollisions(Array<ActorRef<Event>> colliders, Array<Vector2> deltas)
             throws SuspendExecution, InterruptedException {
-//        System.out.println(colliders);
-//        System.out.println(deltas);
         for(int i = 0; i < colliders.size; i++) {
             ActorRef<Event> ref = colliders.get(i);
             String name = ref.getName();

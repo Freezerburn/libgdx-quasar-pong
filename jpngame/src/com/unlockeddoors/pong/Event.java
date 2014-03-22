@@ -14,25 +14,11 @@ import com.badlogic.gdx.utils.Array;
  */
 public class Event extends RequestMessage<Object> {
     public static enum Type {
-        TICK,
         INPUT,
         REQUEST_RECT,
         SEND_RECT,
         COLLISIONS,
         KILL
-    }
-
-    public static class TickEvent extends Event {
-        protected float s;
-
-        public TickEvent(float s) {
-            super(Type.TICK);
-            this.s = s;
-        }
-
-        public float getS() {
-            return s;
-        }
     }
 
     public static class InputEvent extends Event {

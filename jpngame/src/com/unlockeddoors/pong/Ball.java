@@ -3,11 +3,15 @@ package com.unlockeddoors.pong;
 import co.paralleluniverse.actors.ActorRef;
 import co.paralleluniverse.actors.BasicActor;
 import co.paralleluniverse.actors.behaviors.RequestReplyHelper;
+import co.paralleluniverse.fibers.Fiber;
 import co.paralleluniverse.fibers.SuspendExecution;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created with IntelliJ IDEA.
@@ -24,6 +28,7 @@ public class Ball extends BasicActor<Event, Void> {
     Rectangle rect;
     Vector2 velocity;
     boolean going = true;
+    Fiber tick;
 
     public Ball(Rectangle rect, Vector2 velocity) {
         super("Ball", Pong.MAILBOX_CONFIG);
@@ -31,50 +36,48 @@ public class Ball extends BasicActor<Event, Void> {
         this.rect = rect;
         this.velocity = velocity;
 
-        Pong.collisionPhaser.register();
+//        Pong.collisionSynchPoint.register();
         Pong.postShapeRunnable(
                 () -> Pong.shapeRenderer.rect(rect.x, rect.y, rect.width, rect.height),
                 ShapeRenderer.ShapeType.Filled
         );
+
+        Pong.tickSynchPoint.register();
+        Pong.collisionSynchPoint.register();
+        tick = new Fiber(Pong.scheduler, () -> {
+            while(going) {
+                System.out.println("Ball arriving and awaiting tick.");
+                Pong.tickSynchPoint.arriveAndAwaitAdvance();
+                doTick(Gdx.graphics.getDeltaTime());
+                System.out.println("Ball arriving and awaiting collision.");
+                Pong.collisionSynchPoint.arriveAndAwaitAdvance();
+            }
+            Pong.tickSynchPoint.arriveAndDeregister();
+            Pong.collisionSynchPoint.arriveAndDeregister();
+        }).start();
     }
 
     @Override
     protected Void doRun() throws InterruptedException, SuspendExecution {
-        System.out.println("Setting Ball to " + ref() + " in registry.");
         Registry.set("Ball", ref());
-        System.out.println("Ball now looping until killed.");
         while(going) {
-            System.out.println("Ball waiting for an event.");
-            Event e;
-            try {
-                e = receive();
-                System.out.println("Ball got an event.");
-            } catch (Exception e1) {
-                System.out.println("Ball: Exception while getting an event.");
-                e = new Event(Event.Type.KILL);
-                System.out.println("Message: " + e1.getMessage());
-                System.out.println("Cause: " + e1.getCause());
-                e1.printStackTrace();
-            }
-            System.out.println("Ball got an event: " + e);
-            switch (e.type) {
-                case TICK:
-                    Event.TickEvent te = (Event.TickEvent)e;
-                    doTick(te.getS());
-                    Pong.collisionPhaser.arrive();
-                    break;
-                case COLLISIONS:
-                    Event.CollisionsEvent ce = (Event.CollisionsEvent)e;
-                    doCollision(ce.between, ce.deltas);
-                    Pong.collisionEndPhaser.arriveAndDeregister();
-                    break;
-                case REQUEST_RECT:
-                    RequestReplyHelper.reply(e, rect);
-                    break;
-                case KILL:
-                    going = false;
-                    Pong.collisionPhaser.arriveAndDeregister();
-                    break;
+            final Event e = receive();
+            if(null != e) {
+                switch (e.type) {
+                    case COLLISIONS:
+                        Event.CollisionsEvent ce = (Event.CollisionsEvent)e;
+                        System.out.println("Ball handling collision.");
+                        doCollision(ce.between, ce.deltas);
+                        System.out.println("Ball arriving and deregistering render.");
+                        Pong.renderSynchPoint.arriveAndDeregister();
+                        break;
+                    case REQUEST_RECT:
+                        RequestReplyHelper.reply(e, rect);
+                        break;
+                    case KILL:
+                        going = false;
+                        break;
+                }
             }
         }
         return null;
@@ -93,7 +96,6 @@ public class Ball extends BasicActor<Event, Void> {
     }
 
     void doCollision(Array<ActorRef<Event>> between, Array<Vector2> deltas) throws SuspendExecution, InterruptedException {
-//        System.out.println("Between ball: " + between);
         for(int i = 0; i < between.size; i++) {
             final ActorRef<Event> a = between.get(i);
             String name = a.getName();

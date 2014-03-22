@@ -46,11 +46,86 @@ public class CollisionFinder extends BasicActor<Event, Void> {
     public boolean going = true;
     HashMap<String, Rectangle> positionMap = new HashMap<>();
     ReentrantLock lock = new ReentrantLock();
+    Fiber tick;
 
     public CollisionFinder() {
         super("CollisionFinder", Pong.MAILBOX_CONFIG);
-        Pong.collisionPhaser.register();
-        Pong.collisionEndPhaser.register();
+        Pong.collisionSynchPoint.register();
+        Pong.renderSynchPoint.register();
+
+        tick = new Fiber(Pong.scheduler, () -> {
+            try {
+                while(going) {
+                    System.out.println("Collision arriving and awaiting.");
+                    Pong.collisionSynchPoint.arriveAndAwaitAdvance();
+                    System.out.println("Collision finished waiting for sync.");
+                    for(int i = 0; i < collisionSnapshot.size; i++) {
+                        rectPool.freeAll(collisionSnapshot);
+                    }
+                    collisionSnapshot.clear();
+
+                    final Event requestRect = new Event(Event.Type.REQUEST_RECT);
+                    for(int i = 0; i < Pong.actors.size; i++) {
+                        ActorRef<Event> ref = Pong.actors.get(i);
+                        // Ignore ourselves.
+                        if(ref == ref()) {
+                            continue;
+                        }
+                        System.out.println("Collision requesting rect from: " + ref);
+                        Object result = RequestReplyHelper.call(ref, requestRect);
+                        Rectangle rect = (Rectangle) result;
+                        PooledRect pooled = rectPool.obtain();
+                        pooled.init(rect);
+                        collisionSnapshot.add(pooled);
+                    }
+
+                    // Find collisions for all actors in the current snapshot.
+                    for(int i = 0; i < Pong.actors.size; i++) {
+                        ActorRef<Event> ref = Pong.actors.get(i);
+                        if(ref == ref()) {
+                            continue;
+                        }
+
+                        final int stored = i;
+                        Pong.renderSynchPoint.register();
+                        new Fiber(Pong.scheduler, () -> {
+                            try {
+                                System.out.printf("Inside fiber for: " + ref);
+                                Rectangle rect = collisionSnapshot.get(stored).rect;
+                                Array<ActorRef<Event>> colliders = new Array<>(4);
+                                Array<Vector2> deltas = new Array<>(4);
+                                Vector2 delta = new Vector2();
+                                for(int j = 0; j < Pong.actors.size; j++) {
+                                    if(j == stored || Pong.actors.get(j) == ref()) {
+                                        continue;
+                                    }
+                                    Rectangle otherRect = collisionSnapshot.get(j).rect;
+                                    if(aabbCollision(rect, otherRect, delta)) {
+                                        colliders.add(Pong.actors.get(j));
+                                        deltas.add(new Vector2(delta));
+                                    }
+                                }
+                                if(colliders.size > 0) {
+                                    System.out.println("Collision sending even to: " + ref);
+                                    ref.send(new Event.CollisionsEvent(colliders, deltas));
+                                }
+                                else {
+                                    Pong.renderSynchPoint.arriveAndDeregister();
+                                }
+                            }
+                            catch (Exception e1) {
+                                e1.printStackTrace();
+                            }
+                        }).start();
+                    }
+                    Pong.renderSynchPoint.arrive();
+                }
+                Pong.collisionSynchPoint.arriveAndDeregister();
+                Pong.renderSynchPoint.arriveAndDeregister();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     @Override
@@ -58,76 +133,7 @@ public class CollisionFinder extends BasicActor<Event, Void> {
         try {
             while(going) {
                 final Event e = receive();
-//                System.out.println("Collision finder recieved event: " + e.type);
                 switch (e.type) {
-                    case TICK:
-//                        System.out.println("Collision: Awaiting advance.");
-                        Pong.collisionPhaser.arriveAndAwaitAdvance();
-//                        System.out.println("Collision: Finished awaiting advance.");
-
-                        // Reclaim all pooled rectangles and clear out the snapshot.
-                        for(int i = 0; i < collisionSnapshot.size; i++) {
-                            rectPool.freeAll(collisionSnapshot);
-                        }
-                        collisionSnapshot.clear();
-
-                        // Get all rectangles to create a snapshot of the current collision environment.
-                        final Event requestRect = new Event(Event.Type.REQUEST_RECT);
-                        for(int i = 0; i < Pong.actors.size; i++) {
-                            ActorRef<Event> ref = Pong.actors.get(i);
-//                            System.out.println("Collision: Got actor ref: " + ref);
-                            // Ignore ourselves.
-                            if(ref == ref()) {
-//                                System.out.println("Collision: Ignoring because it's us.");
-                                continue;
-                            }
-//                            System.out.println("Collision: Asking for rect.");
-                            Rectangle rect = (Rectangle) RequestReplyHelper.call(ref, requestRect);
-//                            System.out.println("Collision: Got rect: " + rect);
-                            PooledRect pooled = rectPool.obtain();
-                            pooled.init(rect);
-                            collisionSnapshot.add(pooled);
-                        }
-
-                        // Find collisions for all actors in the current snapshot.
-                        for(int i = 0; i < Pong.actors.size; i++) {
-                            ActorRef<Event> ref = Pong.actors.get(i);
-                            if(ref == ref()) {
-                                continue;
-                            }
-
-                            final int stored = i;
-                            Pong.collisionEndPhaser.register();
-                            new Fiber(Pong.scheduler, () -> {
-                                try {
-                                    Rectangle rect = collisionSnapshot.get(stored).rect;
-                                    Array<ActorRef<Event>> colliders = new Array<>(4);
-                                    Array<Vector2> deltas = new Array<>(4);
-                                    Vector2 delta = new Vector2();
-                                    for(int j = 0; j < Pong.actors.size; j++) {
-                                        if(j == stored || Pong.actors.get(j) == ref()) {
-                                            continue;
-                                        }
-                                        Rectangle otherRect = collisionSnapshot.get(j).rect;
-                                        if(aabbCollision(rect, otherRect, delta)) {
-                                            colliders.add(Pong.actors.get(j));
-                                            deltas.add(new Vector2(delta));
-                                        }
-                                    }
-                                    if(colliders.size > 0) {
-                                        ref.send(new Event.CollisionsEvent(colliders, deltas));
-                                    }
-                                    else {
-                                        Pong.collisionEndPhaser.arriveAndDeregister();
-                                    }
-                                }
-                                catch (Exception e1) {
-                                    e1.printStackTrace();
-                                }
-                            }).start();
-                        }
-                        Pong.collisionEndPhaser.arrive();
-                        break;
                     case KILL:
                         going = false;
                         break;
@@ -136,7 +142,6 @@ public class CollisionFinder extends BasicActor<Event, Void> {
         } catch (Exception e) {
             e.printStackTrace();
         }
-//        System.out.println("Collision finder done.");
         return null;
     }
 

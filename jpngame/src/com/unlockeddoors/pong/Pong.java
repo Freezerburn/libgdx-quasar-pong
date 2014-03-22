@@ -55,10 +55,10 @@ public class Pong implements ApplicationListener, InputProcessor {
 
     public static Array<ActorRef<Event>> actors = new Array<>(10);
     public static final FiberForkJoinScheduler scheduler = new FiberForkJoinScheduler("Background Fibers", 4);
-    public static final Phaser collisionPhaser = new Phaser();
-    public static final Phaser collisionEndPhaser = new Phaser();
 
-    Event.TickEvent tickEvent = new Event.TickEvent(16.0f / 1000.0f);
+    public static final Phaser tickSynchPoint = new Phaser();
+    public static final Phaser collisionSynchPoint = new Phaser();
+    public static final Phaser renderSynchPoint = new Phaser();
 
     static class ShapeRunnableContainer implements Pool.Poolable {
         Runnable r;
@@ -132,14 +132,15 @@ public class Pong implements ApplicationListener, InputProcessor {
             final float paddleX = w / 2.0f - paddleWidth / 2.0f;
             final float paddleY = paddleHeight + paddleBufferToEdge;
 
+            tickSynchPoint.register();
+            renderSynchPoint.register();
+
             actors.add(new Paddle(new Rectangle(paddleX, paddleY, Paddle.WIDTH, Paddle.HEIGHT)).spawn(scheduler));
             actors.add(new Wall(new Rectangle(wallBufferToEdge, 0, wallWidth, h)).spawn(scheduler));
             actors.add(new Wall(new Rectangle(w - wallBufferToEdge - wallWidth, 0, wallWidth, h)).spawn(scheduler));
             actors.add(new Ball(new Rectangle(w / 2.0f, h / 2.0f, Ball.SIZE, Ball.SIZE), new Vector2(100, 100)).spawn(scheduler));
             actors.add(new Enemy(new Rectangle(paddleX, h - paddleBufferToEdge, Paddle.WIDTH, Paddle.HEIGHT)).spawn(scheduler));
             actors.add(new CollisionFinder().spawn(scheduler));
-
-            collisionEndPhaser.register();
         }
         catch (GdxRuntimeException e) {
             e.getCause().printStackTrace();
@@ -162,17 +163,11 @@ public class Pong implements ApplicationListener, InputProcessor {
         try {
             Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
 
-            for(int i = 0; i < actors.size; i++) {
-                ActorRef<Event> ref = actors.get(i);
-                new Fiber(scheduler, () -> {
-                    System.out.println("Sending tick event to: " + ref);
-                    ref.send(tickEvent);
-                    System.out.println("Done sending tick event to: " + ref);
-                }).start();
-            }
-//            System.out.println("Done tick events.");
-            collisionEndPhaser.arriveAndAwaitAdvance();
-//            System.out.println("Done waiting for end of phaser.");
+            System.out.println("Arriving at tickSynchPoint.");
+            tickSynchPoint.arrive();
+            System.out.println("Arriving and awaiting renderSynchPoint.");
+            renderSynchPoint.arriveAndAwaitAdvance();
+            System.out.println("About to start rendering.");
 
             postedShapeRunnables.sort((one, two) -> one.type.compareTo(two.type));
             shapeRenderer.setProjectionMatrix(camera.combined);

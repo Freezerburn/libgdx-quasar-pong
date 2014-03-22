@@ -3,7 +3,6 @@ package com.unlockeddoors.pong;
 import co.paralleluniverse.actors.BasicActor;
 import co.paralleluniverse.actors.behaviors.RequestReplyHelper;
 import co.paralleluniverse.fibers.SuspendExecution;
-import co.paralleluniverse.strands.channels.DelayedVal;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 
@@ -32,22 +31,25 @@ public class Wall extends BasicActor<Event, Void> {
 
     @Override
     protected Void doRun() throws InterruptedException, SuspendExecution {
-        while(going) {
-            final Event e = receive();
-//            System.out.println("Wall got event: " + e.type);
-            switch (e.type) {
-                case REQUEST_RECT:
-//                    System.out.println("Replying with: " + rect);
-                    RequestReplyHelper.reply(e, rect);
-//                    System.out.println("Done replying.");
-                    break;
-                case COLLISIONS:
-                    Pong.collisionEndPhaser.arriveAndDeregister();
-                    break;
-                case KILL:
-                    going = false;
-                    break;
+        try {
+            while(going) {
+                final Event e = receive();
+                switch (e.type) {
+                    case REQUEST_RECT:
+                        System.out.println(ref() + " got REQUEST_RECT event. Giving back rect: " + rect);
+                        RequestReplyHelper.reply(e, rect);
+                        break;
+                    case COLLISIONS:
+                        System.out.println("Wall arriving and deregistring render.");
+                        Pong.renderSynchPoint.arriveAndDeregister();
+                        break;
+                    case KILL:
+                        going = false;
+                        break;
+                }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         remover.remove();
         return null;
